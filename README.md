@@ -42,11 +42,11 @@ go install github.com/binsquare/envmap@latest
 
 ```sh
 # installs to /usr/local/bin/envmap by default
-curl -sSfL https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz \
+curl -sSfL "https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz" \
   | tar -xz -C /usr/local/bin envmap
 
 # (optional) verify checksum
-curl -sSfL https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz.sha256 \
+curl -sSfL "https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz.sha256" \
   | sha256sum --check -
 ```
 
