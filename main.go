@@ -53,13 +53,18 @@ func newRootCmd() *cobra.Command {
 }
 
 func newInitCmd() *cobra.Command {
+	var globalOnly bool
 	c := &cobra.Command{
 		Use:   "init",
-		Short: "Interactively configure envMap for this project",
+		Short: "Interactively configure envMap",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if globalOnly {
+				return runInteractiveGlobalSetup(cmd.Context())
+			}
 			return runInteractiveInit(cmd.Context())
 		},
 	}
+	c.Flags().BoolVar(&globalOnly, "global", false, "configure ~/.envmap/config.yaml (providers)")
 	return c
 }
 
