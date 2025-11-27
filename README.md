@@ -41,22 +41,21 @@ go install github.com/binsquare/envmap@latest
 ### Option 2: Prebuilt binary (bash)
 
 ```sh
-# installs to /usr/local/bin/envmap by default
+# install into /usr/local/bin (requires sudo)
 curl -sSfL "https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz" \
-  | tar -xz -C /usr/local/bin envmap
+  | sudo tar -xz -C /usr/local/bin envmap
 
-# (optional) verify checksum
+# or install into ~/.local/bin (no sudo; ensure it's on PATH)
+mkdir -p ~/.local/bin
+curl -sSfL "https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz" \
+  | tar -xz -C ~/.local/bin envmap
+
+# (optional) verify checksum (adjust path if using ~/.local/bin)
 curl -sSfL "https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz.sha256" \
   | sha256sum --check -
 ```
 
-If you install somewhere else, add that directory to your shell profile:
-
-| Shell | Command                                              |
-| ----- | ---------------------------------------------------- |
-| bash  | `echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc`  |
-| zsh   | `echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc`   |
-| fish  | `set -Ux fish_user_paths $HOME/bin $fish_user_paths` |
+If you use the `~/.local/bin` option, make sure your shell loads it (most modern shells already do; otherwise append `export PATH="$HOME/.local/bin:$PATH"` to your profile).
 
 Restart the shell (or reload the profile) and run `envmap --help` to verify.
 
