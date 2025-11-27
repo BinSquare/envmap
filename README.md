@@ -98,6 +98,15 @@ envmap export --env dev --format json | jq .
 
 `export` outputs unmasked values to stdout for composition with other tools. No file writing.
 
+### Use with direnv
+
+```sh
+# .envrc
+eval "$(envmap export --env dev)"
+```
+
+Then run `direnv allow`. Every time you enter the directory, direnv will re-run `envmap export` and populate the shell with fresh secrets without touching disk.
+
 ### Get/set individual secrets
 
 ```sh
@@ -266,9 +275,13 @@ Generate keys with `envmap keygen` (256 bits from crypto/rand). Store the key fi
 │   ├── aws_ssm.go
 │   ├── vault.go
 │   └── ...
-└── ...
-```
+
+## Contributions
+
+Works on my machine but please contribute if you see a bug.
+
 
 ## License
 
 MIT
+```
