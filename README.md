@@ -1,82 +1,34 @@
 # envmap
 
-Injects secrets from external providers into process environments at runtime. No `.env` files committed, no secrets in shell history.
+Opensource ENV manager to inject your .env key-values into the process directly to eliminate the .env file.
+
+There's so many cases of projects accidentally committing them. Myself included :(, I built this to stop myself and also to central way to manage my 8 active project's .env files.
 
 ## Installation
+
+### Option 1: Go toolchain
 
 ```sh
 go install github.com/binsquare/envmap@latest
 ```
 
-## Architecture
+### Option 2: Prebuilt binary (bash)
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  .envmap.yaml (per-project)                                  │
-│  - Maps environments to providers                            │
-│  - Defines key prefixes for namespacing                      │
-└──────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────┐
-│  ~/.envmap/config.yaml (global)                              │
-│  - Provider credentials and configuration                    │
-│  - Shared across projects                                    │
-└──────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────┐
-│  Provider Interface                                          │
-│  Get(name) │ List(prefix) │ Set(name, value)                 │
-├──────────────────────────────────────────────────────────────┤
-│  aws-ssm │ aws-secretsmanager │ gcp-secretmanager │ vault   │
-│  onepassword │ doppler │ local-file                          │
-└──────────────────────────────────────────────────────────────┘
+```sh
+# installs to /usr/local/bin/envmap by default
+curl -sSfL https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz \
+  | tar -xz -C /usr/local/bin envmap
 ```
 
-## Configuration
+If you install somewhere else, add that directory to your shell profile:
 
-### Global config (`~/.envmap/config.yaml`)
+| Shell | Command                                              |
+| ----- | ---------------------------------------------------- |
+| bash  | `echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc`  |
+| zsh   | `echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc`   |
+| fish  | `set -Ux fish_user_paths $HOME/bin $fish_user_paths` |
 
-```yaml
-providers:
-  aws-dev:
-    type: aws-ssm
-    region: us-west-2
-    profile: dev # optional, uses default credential chain
-
-  vault-prod:
-    type: vault
-    address: https://vault.internal:8200
-    mount: secret # default: secret
-
-  local:
-    type: local-file
-    path: ~/.envmap/secrets.db
-    encryption:
-      key_file: ~/.envmap/key # must be chmod 600
-      # or: key_env: ENVMAP_KEY
-```
-
-### Project config (`.envmap.yaml`)
-
-```yaml
-project: myapp
-default_env: dev
-
-envs:
-  dev:
-    provider: aws-dev
-    path_prefix: /myapp/dev/
-
-  staging:
-    provider: aws-dev
-    path_prefix: /myapp/staging/
-
-  local:
-    provider: local
-    prefix: myapp/
-```
+Restart the shell (or reload the profile) and run `envmap --help` to verify.
 
 ## Usage
 
@@ -157,6 +109,50 @@ envmap validate  # validate configuration
 envmap init   # interactive project setup
 ```
 
+## Configuration
+
+### Global config (`~/.envmap/config.yaml`)
+
+```yaml
+providers:
+  aws-dev:
+    type: aws-ssm
+    region: us-west-2
+    profile: dev # optional, uses default credential chain
+
+  vault-prod:
+    type: vault
+    address: https://vault.internal:8200
+    mount: secret # default: secret
+
+  local:
+    type: local-file
+    path: ~/.envmap/secrets.db
+    encryption:
+      key_file: ~/.envmap/key # must be chmod 600
+      # or: key_env: ENVMAP_KEY
+```
+
+### Project config (`.envmap.yaml`)
+
+```yaml
+project: myapp
+default_env: dev
+
+envs:
+  dev:
+    provider: aws-dev
+    path_prefix: /myapp/dev/
+
+  staging:
+    provider: aws-dev
+    path_prefix: /myapp/staging/
+
+  local:
+    provider: local
+    prefix: myapp/
+```
+
 ## Providers
 
 | Type                 | Auth                       | Notes                                                   |
@@ -176,7 +172,7 @@ envmap init   # interactive project setup
 - Values masked by default in `env` and `get` output
 - `export` outputs to stdout only, no file writing
 
-### Local provider security
+### There is a local provider so you don't need a remote secrets manager. Here's how I secure it:
 
 | Layer            | Implementation                      |
 | ---------------- | ----------------------------------- |
@@ -194,32 +190,31 @@ Generate keys with `envmap keygen` (256 bits from crypto/rand). Store the key fi
 - In a secure backup
 - Never commit to version control
 
-## Adding Providers
+## Architecture
 
-Providers self-register via `init()`. Create a new file in `provider/`:
-
-```go
-package provider
-
-func init() {
-    Register(Info{
-        Type:           "my-backend",
-        Description:    "My secret backend",
-        Factory:        newMyBackend,
-        RequiredFields: []string{"endpoint"},
-    })
-}
-
-func newMyBackend(envCfg EnvConfig, cfg ProviderConfig) (Provider, error) {
-    // ...
-}
-
-func (p *myBackend) Get(ctx context.Context, name string) (string, error) { ... }
-func (p *myBackend) List(ctx context.Context, prefix string) (map[string]string, error) { ... }
-func (p *myBackend) Set(ctx context.Context, name, value string) error { ... }
 ```
-
-See `provider/TEMPLATE.go.example` for a complete example.
+┌──────────────────────────────────────────────────────────────┐
+│  .envmap.yaml (per-project)                                  │
+│  - Maps environments to providers                            │
+│  - Defines key prefixes for namespacing                      │
+└──────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│  ~/.envmap/config.yaml (global)                              │
+│  - Provider credentials and configuration                    │
+│  - Shared across projects                                    │
+└──────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Provider Interface                                          │
+│  Get(name) │ List(prefix) │ Set(name, value)                 │
+├──────────────────────────────────────────────────────────────┤
+│  aws-ssm │ aws-secretsmanager │ gcp-secretmanager │ vault   │
+│  onepassword │ doppler │ local-file                          │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ## Project Structure
 
@@ -235,10 +230,6 @@ See `provider/TEMPLATE.go.example` for a complete example.
 │   └── ...
 └── ...
 ```
-
-## Backward Compatibility
-
-Config files using the old `source`/`sources` naming continue to work. Internally mapped to `provider`/`providers`.
 
 ## License
 
