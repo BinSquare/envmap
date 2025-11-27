@@ -16,7 +16,7 @@
     <img src="https://goreportcard.com/badge/github.com/binsquare/envmap" alt="Go Report Card">
   </a>
   <a href="https://github.com/binsquare/envmap/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/binsquare/envmap" alt="License: MIT">
+    <img src="https://img.shields.io/github/license/binsquare/envmap" alt="License: Apache-2.0">
   </a>
 </p>
 
@@ -223,4 +223,4 @@ The GitHub Actions release workflow builds macOS/Linux archives for both archite
 
 ## License
 
-MIT
+Licensed under the Apache License, Version 2.0. See [LICENSE](./LICENSE) for details.
