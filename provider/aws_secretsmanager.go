@@ -155,4 +155,3 @@ func (p *awsSecretsManager) client(ctx context.Context) (*secretsmanager.Client,
 	}
 	return secretsmanager.NewFromConfig(cfg), nil
 }
-

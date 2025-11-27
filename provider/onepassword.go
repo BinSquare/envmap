@@ -133,4 +133,3 @@ func (p *onePassword) Set(ctx context.Context, name, value string) error {
 	}
 	return nil
 }
-

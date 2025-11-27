@@ -190,7 +190,7 @@ envs:
 
 ## Security Model
 
-- Secrets never touch disk during normal operation
+- Secrets never touch disk during normal operation. (unless you choose local)
 - `set --prompt` and `set --file` avoid shell history
 - Values masked by default in `env` and `get` output
 - `export` outputs to stdout only, no file writing
@@ -212,14 +212,6 @@ Generate keys with `envmap keygen` (256 bits from crypto/rand). Store the key fi
 ## Contributions
 
 Contributions and bug reports are welcome—open an issue or submit a PR if you find a bug.
-
-## Release workflow
-
-1. Update changelog/version as needed.
-2. Create a tag following `vX.Y.Z` (or `vYYYY.MM.DD.HHMMSS`): `git tag v1.2.3`.
-3. Push the tag: `git push origin v1.2.3`.
-
-The GitHub Actions release workflow builds macOS/Linux archives for both architectures, generates per-archive SHA-256 sums, and attaches everything to the GitHub release. Users can download the `.tar.gz` alongside the `.sha256` and run `sha256sum --check`.
 
 ## License
 

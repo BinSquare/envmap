@@ -142,4 +142,3 @@ func (p *vaultProvider) Set(ctx context.Context, name, value string) error {
 	}
 	return nil
 }
-

@@ -124,4 +124,3 @@ func (p *doppler) List(ctx context.Context, prefix string) (map[string]string, e
 func (p *doppler) Set(ctx context.Context, name, value string) error {
 	return fmt.Errorf("doppler Set not implemented: use doppler CLI to set secrets")
 }
-

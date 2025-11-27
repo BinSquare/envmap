@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ErrNotConfigured = errors.New("provider not configured")
+	ErrNotConfigured  = errors.New("provider not configured")
 	ErrNotImplemented = errors.New("provider not implemented")
 )
 
@@ -104,4 +104,3 @@ func ListTypes() []string {
 	}
 	return types
 }
-

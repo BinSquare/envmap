@@ -115,4 +115,3 @@ func (p *awsSSM) client(ctx context.Context) (*ssm.Client, error) {
 	}
 	return ssm.NewFromConfig(cfg), nil
 }
-

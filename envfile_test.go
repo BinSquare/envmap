@@ -37,12 +37,12 @@ NO_VALUE
 	}{
 		{"DB_HOST", "localhost", true},
 		{"DB_PORT", "5432", true},
-		{"DB_PASSWORD", "quoted value", true},      // quotes stripped
-		{"API_KEY", "single quoted", true},         // single quotes stripped
-		{"EMPTY", "", true},                        // empty value is valid
-		{"WHITESPACE", "spaced", true},             // whitespace trimmed
-		{"NO_VALUE", "", false},                    // malformed, skipped
-		{"COMMENT", "", false},                     // comments skipped
+		{"DB_PASSWORD", "quoted value", true}, // quotes stripped
+		{"API_KEY", "single quoted", true},    // single quotes stripped
+		{"EMPTY", "", true},                   // empty value is valid
+		{"WHITESPACE", "spaced", true},        // whitespace trimmed
+		{"NO_VALUE", "", false},               // malformed, skipped
+		{"COMMENT", "", false},                // comments skipped
 	}
 
 	for _, tt := range tests {
@@ -81,4 +81,3 @@ func TestParseDotEnvNotFound(t *testing.T) {
 		t.Error("expected error for missing file")
 	}
 }
-

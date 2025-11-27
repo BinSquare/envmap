@@ -75,4 +75,3 @@ func ensurePrefixSlash(prefix string) string {
 	}
 	return prefix + "/"
 }
-

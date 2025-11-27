@@ -162,4 +162,3 @@ func TestFactoryPattern(t *testing.T) {
 		t.Error("expected error for missing required config")
 	}
 }
-
