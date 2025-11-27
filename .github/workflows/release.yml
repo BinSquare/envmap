@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-upload:
+    name: Build ${{ matrix.artifact_os }} ${{ matrix.artifact_arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact_os: Linux
+            artifact_arch: x86_64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            artifact_os: Linux
+            artifact_arch: aarch64
+            runner: ubuntu-latest
+          - goos: darwin
+            goarch: amd64
+            artifact_os: Darwin
+            artifact_arch: x86_64
+            runner: ubuntu-latest
+          - goos: darwin
+            goarch: arm64
+            artifact_os: Darwin
+            artifact_arch: arm64
+            runner: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -o dist/envmap .
+
+      - name: Create archive
+        run: |
+          tar -C dist -czf envmap_${{ matrix.artifact_os }}_${{ matrix.artifact_arch }}.tar.gz envmap
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: envmap_${{ matrix.artifact_os }}_${{ matrix.artifact_arch }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
