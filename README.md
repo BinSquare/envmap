@@ -1,8 +1,6 @@
 # envmap
 
-Opensource ENV manager to inject your .env key-values into the process directly to eliminate the .env file.
-
-There's so many cases of projects accidentally committing them. Myself included :(, I built this to stop myself and also to central way to manage my 8 active project's .env files.
+`envmap` keeps secrets out of your Git history by sourcing them from a provider (local encrypted store, AWS SSM, Vault, etc.) and injecting them directly into the target process. No `.env` files, no accidental commits, no ad‑hoc shell scripts.
 
 ## Installation
 
@@ -30,31 +28,17 @@ If you install somewhere else, add that directory to your shell profile:
 
 Restart the shell (or reload the profile) and run `envmap --help` to verify.
 
-## Quick start example (local provider for solo devs like me)
+## Quick start (local provider)
 
 ```sh
 # 1. Generate encryption key (writes to ~/.envmap/key)
 envmap keygen
 
-# 2. Create global config (use absolute paths, no ~ or ${HOME})
-cat > ~/.envmap/config.yaml <<'YAML'
-providers:
-  local-dev:
-    type: local-file
-    path: /Users/<you>/.envmap/secrets.db
-    encryption:
-      key_file: /Users/<you>/.envmap/key
-YAML
+# 2. Configure global provider (wizard; runs keygen if needed)
+envmap init --global
 
-# 3. Create project config
-cat > .envmap.yaml <<'YAML'
-project: demo
-default_env: dev
-envs:
-  dev:
-    provider: local-dev
-    prefix: demo/dev/
-YAML
+# 3. Create project config (wizard)
+envmap init
 
 # 4. Add secrets
 envmap set --env dev DATABASE_URL --prompt
@@ -66,37 +50,46 @@ eval $(envmap export --env dev)
 envmap run -- npm start
 ```
 
-Make sure the `path` and `key_file` entries use actual absolute paths (Go does not expand `~` or `${HOME}`).
+Prefer the wizards, but manual config is supported. Use absolute paths (Go does not expand `~` or `${HOME}`).
+
+<details>
+<summary>Manual configuration reference</summary>
+
+### Global config (`~/.envmap/config.yaml`)
+
+```yaml
+providers:
+  local-dev:
+    type: local-file
+    path: /Users/<you>/.envmap/secrets.db
+    encryption:
+      key_file: /Users/<you>/.envmap/key
+```
+
+### Project config (`.envmap.yaml`)
+
+```yaml
+project: demo
+default_env: dev
+envs:
+  dev:
+    provider: local-dev
+    prefix: demo/dev/
+```
+
+</details>
 
 ## Usage
 
-### Run with injected environment
-
-```sh
-envmap run -- npm start
-envmap run --env staging -- ./bin/server
-```
-
-Secrets are injected via the process environment. Nothing written to disk.
-
-### Inspect secrets (human)
-
-```sh
-envmap env                    # masked, for debugging
-envmap env --env prod --raw   # unmasked (use with care)
-```
-
-### Export secrets (machine)
-
-```sh
-# Shell eval (direnv, scripts)
-eval $(envmap export --env dev)
-
-# JSON for tooling
-envmap export --env dev --format json | jq .
-```
-
-`export` outputs unmasked values to stdout for composition with other tools. No file writing.
+- `envmap run -- <command>` – fetch secrets for an environment and exec the target process with those env vars (disk never sees them).
+- `envmap env [--env <name>] [--raw]` – inspect secrets; masked by default, `--raw` reveals values.
+- `envmap export [--env <name>] [--format plain|json]` – output suitable for `eval`, direnv, or tooling.
+- `envmap get --env <name> KEY [--raw]` – read individual secrets.
+- `envmap set --env <name> KEY (--prompt | --file PATH)` – write/update secrets without shell history.
+- `envmap import PATH --env <name> [--delete]` – ingest existing `.env` files.
+- `envmap keygen [-o PATH]` – create a 256-bit key for the local provider.
+- `envmap validate` – confirm `.envmap.yaml` and global config reference defined providers.
+- `envmap init` / `envmap init --global` – interactive project/global configuration.
 
 ### Use with direnv
 
@@ -106,55 +99,6 @@ eval "$(envmap export --env dev)"
 ```
 
 Then run `direnv allow`. Every time you enter the directory, direnv will re-run `envmap export` and populate the shell with fresh secrets without touching disk.
-
-### Get/set individual secrets
-
-```sh
-# Get
-envmap get --env dev DB_URL
-envmap get --env dev DB_URL --raw
-
-# Set (never use command-line args for values)
-envmap set --env dev DB_URL --prompt
-envmap set --env dev DB_URL --file /tmp/secret.txt
-```
-
-### Import from `.env` files
-
-```sh
-envmap import .env --env dev
-envmap import .env --env dev --delete  # delete after import
-```
-
-Parses the file, writes each key to the provider.
-
-### Local storage setup
-
-```sh
-# Generate secure encryption key
-envmap keygen
-
-# Or specify a custom path
-envmap keygen -o ~/.envmap/myproject-key
-```
-
-Then configure `~/.envmap/config.yaml`:
-
-```yaml
-providers:
-  local:
-    type: local-file
-    path: ~/.envmap/secrets.db
-    encryption:
-      key_file: ~/.envmap/key
-```
-
-### Diagnostics
-
-```sh
-envmap validate  # validate configuration
-envmap init   # interactive project setup
-```
 
 ## Configuration
 
@@ -200,7 +144,7 @@ envs:
     prefix: myapp/
 ```
 
-## Providers
+## Built-in providers (WIP)
 
 | Type                 | Auth                       | Notes                                                   |
 | -------------------- | -------------------------- | ------------------------------------------------------- |
@@ -219,7 +163,7 @@ envs:
 - Values masked by default in `env` and `get` output
 - `export` outputs to stdout only, no file writing
 
-### There is a local provider so you don't need a remote secrets manager. Here's how I secure it:
+### Local provider hardening
 
 | Layer            | Implementation                      |
 | ---------------- | ----------------------------------- |
@@ -231,57 +175,12 @@ envs:
 | Atomic writes    | Write to temp + rename (crash-safe) |
 | Minimum key      | 16 bytes enforced                   |
 
-Generate keys with `envmap keygen` (256 bits from crypto/rand). Store the key file:
-
-- Outside your repository
-- In a secure backup
-- Never commit to version control
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  .envmap.yaml (per-project)                                  │
-│  - Maps environments to providers                            │
-│  - Defines key prefixes for namespacing                      │
-└──────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────┐
-│  ~/.envmap/config.yaml (global)                              │
-│  - Provider credentials and configuration                    │
-│  - Shared across projects                                    │
-└──────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────┐
-│  Provider Interface                                          │
-│  Get(name) │ List(prefix) │ Set(name, value)                 │
-├──────────────────────────────────────────────────────────────┤
-│  aws-ssm │ aws-secretsmanager │ gcp-secretmanager │ vault   │
-│  onepassword │ doppler │ local-file                          │
-└──────────────────────────────────────────────────────────────┘
-```
-
-## Project Structure
-
-```
-├── main.go           # CLI commands (cobra)
-├── config.go         # Config loading, backward compat for source→provider
-├── env.go            # Secret collection, provider instantiation
-├── provider/
-│   ├── provider.go   # Interface + registry
-│   ├── config.go     # Provider-specific types
-│   ├── aws_ssm.go
-│   ├── vault.go
-│   └── ...
+Generate keys with `envmap keygen` (256 bits from crypto/rand). Store the key file outside your repository.
 
 ## Contributions
 
-Works on my machine but please contribute if you see a bug.
-
+Contributions and bug reports are welcome—open an issue or submit a PR if you find a bug.
 
 ## License
 
 MIT
-```
