@@ -2,7 +2,6 @@ name: Release
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
   release:
     types: [published]
@@ -45,7 +44,7 @@ jobs:
         with:
           # Use a pinned Go version instead of parsing go.mod to avoid
           # failing on unsupported prerelease versions in the module file.
-          go-version: '1.23'
+          go-version: '1.25'
 
       - name: Download dependencies
         run: go mod download
