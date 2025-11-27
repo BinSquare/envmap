@@ -2,9 +2,12 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   release:
     types: [published]
+
+permissions:
+  contents: write
 
 jobs:
   build-and-upload:
@@ -44,7 +47,7 @@ jobs:
         with:
           # Use a pinned Go version instead of parsing go.mod to avoid
           # failing on unsupported prerelease versions in the module file.
-          go-version: '1.25'
+          go-version: "1.25"
 
       - name: Download dependencies
         run: go mod download
@@ -61,10 +64,13 @@ jobs:
       - name: Create archive
         run: |
           tar -C dist -czf envmap_${{ matrix.artifact_os }}_${{ matrix.artifact_arch }}.tar.gz envmap
+          sha256sum envmap_${{ matrix.artifact_os }}_${{ matrix.artifact_arch }}.tar.gz > envmap_${{ matrix.artifact_os }}_${{ matrix.artifact_arch }}.tar.gz.sha256
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: envmap_${{ matrix.artifact_os }}_${{ matrix.artifact_arch }}.tar.gz
+          files: |
+            envmap_${{ matrix.artifact_os }}_${{ matrix.artifact_arch }}.tar.gz
+            envmap_${{ matrix.artifact_os }}_${{ matrix.artifact_arch }}.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

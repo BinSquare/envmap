@@ -1,6 +1,38 @@
+<p align="center">
+  <img src="./logo.svg" alt="envmap logo" width="320">
+</p>
+
 # envmap
 
-`envmap` keeps secrets out of your Git history by sourcing them from a provider (local encrypted store, AWS SSM, Vault, etc.) and injecting them directly into the target process. No `.env` files, no accidental commits, no ad‑hoc shell scripts.
+`envmap` keeps secrets out of your Git history by sourcing them from a provider (local encrypted store, AWS SSM, Vault, etc.) and injecting them directly into the target process. No `.env` files, no accidental commits, no “who has the latest .env?” in Slack.
+
+## Why?
+
+- `.env` files are easy to leak and hard to rotate across multiple engineers and machines.
+- Most teams already have a secrets backend (or should); local dev is the messy part.
+- `envmap` gives each repo a single, typed mapping from “env name → provider path” and a consistent `envmap run -- <cmd>` entrypoint.
+
+<p align="center">
+  <img src="./logo.svg" alt="envmap logo" width="280">
+</p>
+
+<p align="center">
+  <a href="https://github.com/binsquare/envmap/stargazers">
+    <img src="https://img.shields.io/github/stars/binsquare/envmap?style=social" alt="GitHub stars">
+  </a>
+  <a href="https://github.com/binsquare/envmap/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/binsquare/envmap/release.yml?label=ci" alt="CI status">
+  </a>
+  <a href="https://pkg.go.dev/github.com/binsquare/envmap">
+    <img src="https://pkg.go.dev/badge/github.com/binsquare/envmap.svg" alt="Go Reference">
+  </a>
+  <a href="https://goreportcard.com/report/github.com/binsquare/envmap">
+    <img src="https://goreportcard.com/badge/github.com/binsquare/envmap" alt="Go Report Card">
+  </a>
+  <a href="https://github.com/binsquare/envmap/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/binsquare/envmap" alt="License: MIT">
+  </a>
+</p>
 
 ## Installation
 
@@ -16,6 +48,10 @@ go install github.com/binsquare/envmap@latest
 # installs to /usr/local/bin/envmap by default
 curl -sSfL https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz \
   | tar -xz -C /usr/local/bin envmap
+
+# (optional) verify checksum
+curl -sSfL https://github.com/binsquare/envmap/releases/latest/download/envmap_$(uname -s)_$(uname -m).tar.gz.sha256 \
+  | sha256sum --check -
 ```
 
 If you install somewhere else, add that directory to your shell profile:
@@ -180,6 +216,14 @@ Generate keys with `envmap keygen` (256 bits from crypto/rand). Store the key fi
 ## Contributions
 
 Contributions and bug reports are welcome—open an issue or submit a PR if you find a bug.
+
+## Release workflow
+
+1. Update changelog/version as needed.
+2. Create a tag following `vX.Y.Z` (or `vYYYY.MM.DD.HHMMSS`): `git tag v1.2.3`.
+3. Push the tag: `git push origin v1.2.3`.
+
+The GitHub Actions release workflow builds macOS/Linux archives for both architectures, generates per-archive SHA-256 sums, and attaches everything to the GitHub release. Users can download the `.tar.gz` alongside the `.sha256` and run `sha256sum --check`.
 
 ## License
 
