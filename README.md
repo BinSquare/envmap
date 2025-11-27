@@ -30,6 +30,44 @@ If you install somewhere else, add that directory to your shell profile:
 
 Restart the shell (or reload the profile) and run `envmap --help` to verify.
 
+## Quick start example (local provider for solo devs like me)
+
+```sh
+# 1. Generate encryption key (writes to ~/.envmap/key)
+envmap keygen
+
+# 2. Create global config (use absolute paths, no ~ or ${HOME})
+cat > ~/.envmap/config.yaml <<'YAML'
+providers:
+  local-dev:
+    type: local-file
+    path: /Users/<you>/.envmap/secrets.db
+    encryption:
+      key_file: /Users/<you>/.envmap/key
+YAML
+
+# 3. Create project config
+cat > .envmap.yaml <<'YAML'
+project: demo
+default_env: dev
+envs:
+  dev:
+    provider: local-dev
+    prefix: demo/dev/
+YAML
+
+# 4. Add secrets
+envmap set --env dev DATABASE_URL --prompt
+envmap set --env dev STRIPE_KEY --prompt
+
+# 5. Inspect/export/run
+envmap env
+eval $(envmap export --env dev)
+envmap run -- npm start
+```
+
+Make sure the `path` and `key_file` entries use actual absolute paths (Go does not expand `~` or `${HOME}`).
+
 ## Usage
 
 ### Run with injected environment
