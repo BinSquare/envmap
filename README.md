@@ -7,7 +7,7 @@
     <img src="https://img.shields.io/github/stars/binsquare/envmap?style=social" alt="GitHub stars">
   </a>
   <a href="https://github.com/binsquare/envmap/actions/workflows/release.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/binsquare/envmap/release.yml?branch=main&label=release" alt="Release workflow status">
+    <img src="https://img.shields.io/github/actions/workflow/status/binsquare/envmap/release.yml?branch=main&event=push&label=release" alt="Release workflow status">
   </a>
   <a href="https://pkg.go.dev/github.com/binsquare/envmap">
     <img src="https://pkg.go.dev/badge/github.com/binsquare/envmap" alt="Go pkg Reference">
