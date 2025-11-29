@@ -22,13 +22,22 @@
 
 # envmap
 
-`envmap` keeps secrets out of your Git history by sourcing them from a provider (local encrypted store, AWS SSM, Vault, etc.) and injecting them directly into the target process. No `.env` files, no accidental commits, no “who has the latest .env?” in Slack.
+`envmap` is a local env manager that keeps laptops, CI, and feature branches in sync with the remote secret stores you already trust. Instead of copying `.env` files or manually editing it, every repo declares a typed mapping of `env → provider path`, and you run `envmap run -- npm start` (or any command) to launch processes with fresh, provider-backed variables.
 
-## Why?
+For devs not using a remote secrets manager - it doubles as an env-set switcher: define dev/staging/prod mappings once and jump between them without ever touching a plaintext `.env`. No more editing files or committing accidental changes or need to have a plaintext file with all your secrets exposed.
 
-- `.env` files are easy to leak and hard to rotate across multiple engineers and machines.
-- Most teams already have a secrets backend (or should); local dev is the messy part.
-- `envmap` gives each repo a single, typed mapping from “env name → provider path” and a consistent `envmap run -- <cmd>` entrypoint.
+### Core benefits
+
+- **Faster onboarding** – a new engineer can clone the repo, run `envmap init`, and immediately inherit the exact env vars if the remote secret stores are configured.
+- **Parity across environments** – map each env to its provider path once and guarantee that laptops, CI, and staging all get the right variables.
+- **Safer secret handling** – secrets live in providers, not Slack or git; rotations propagate automatically, and values never persist past the process lifetime.
+
+### Why?
+
+- Individual developers juggling multiple `.env` variants locally (dev vs staging vs production) without rewriting files or commenting out envs.
+- `.env` files are easy to leak, tough to rotate, and drift across environments.
+- Most teams already run a real secrets backend; envmap simply brings those secrets to local dev in a reproducible way.
+- A single `envmap run -- <cmd>` entrypoint ensures your tooling, CI, and developers share one contract for acquiring secrets.
 
 ## Installation
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/binsquare/envmap/provider"
 	"github.com/spf13/cobra"
@@ -132,26 +133,34 @@ func newEnvCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			secretEnv, err := CollectEnv(cmd.Context(), projectCfg, globalCfg, envToUse)
+			records, err := CollectEnvWithMetadata(cmd.Context(), projectCfg, globalCfg, envToUse)
 			if err != nil {
 				return err
 			}
 
 			// Sort keys for consistent output
-			keys := make([]string, 0, len(secretEnv))
-			for k := range secretEnv {
+			keys := make([]string, 0, len(records))
+			for k := range records {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
 
 			fmt.Fprintf(os.Stderr, "# env: %s (%d secrets)\n", envToUse, len(keys))
 			for _, k := range keys {
-				v := secretEnv[k]
+				rec := records[k]
+				v := rec.Value
 				if raw {
-					fmt.Printf("%s=%s\n", k, v)
+					fmt.Printf("%s=%s", k, v)
 				} else {
-					fmt.Printf("%s=%s\n", k, MaskValue(v))
+					fmt.Printf("%s=%s", k, MaskValue(v))
 				}
+				if !rec.CreatedAt.IsZero() {
+					fmt.Printf("  # created %s", rec.CreatedAt.UTC().Format(time.RFC3339))
+					if age := humanizeAge(rec.CreatedAt); age != "" {
+						fmt.Printf(" (%s ago)", age)
+					}
+				}
+				fmt.Println()
 			}
 			return nil
 		},
@@ -242,6 +251,30 @@ func isSimpleValue(s string) bool {
 		}
 	}
 	return len(s) > 0
+}
+
+func humanizeAge(created time.Time) string {
+	if created.IsZero() {
+		return ""
+	}
+	d := time.Since(created)
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo", int(d.Hours()/(24*30)))
+	default:
+		return fmt.Sprintf("%dyr", int(d.Hours()/(24*365)))
+	}
 }
 
 func newSetCmd() *cobra.Command {

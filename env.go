@@ -27,6 +27,18 @@ func NewProvider(envName string, envCfg EnvConfig, globalCfg GlobalConfig) (prov
 }
 
 func CollectEnv(ctx context.Context, projectCfg ProjectConfig, globalCfg GlobalConfig, envName string) (map[string]string, error) {
+	records, err := CollectEnvWithMetadata(ctx, projectCfg, globalCfg, envName)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(records))
+	for k, rec := range records {
+		out[k] = rec.Value
+	}
+	return out, nil
+}
+
+func CollectEnvWithMetadata(ctx context.Context, projectCfg ProjectConfig, globalCfg GlobalConfig, envName string) (map[string]provider.SecretRecord, error) {
 	envCfg, ok := projectCfg.Envs[envName]
 	if !ok {
 		return nil, fmt.Errorf("env %q not found in project config", envName)
@@ -35,7 +47,7 @@ func CollectEnv(ctx context.Context, projectCfg ProjectConfig, globalCfg GlobalC
 	if err != nil {
 		return nil, err
 	}
-	return p.List(ctx, provider.ResolvedPrefix(envCfg.ToProviderConfig()))
+	return provider.ListOrDescribe(ctx, p, provider.ResolvedPrefix(envCfg.ToProviderConfig()))
 }
 
 func FetchSecret(ctx context.Context, projectCfg ProjectConfig, globalCfg GlobalConfig, envName, key string) (string, error) {

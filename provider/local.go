@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gofrs/flock"
 	"golang.org/x/crypto/hkdf"
@@ -46,6 +47,8 @@ type localFile struct {
 	lock        *flock.Flock
 	mu          sync.Mutex
 }
+
+var _ MetadataLister = (*localFile)(nil)
 
 func newLocalFile(envCfg EnvConfig, providerCfg ProviderConfig) (Provider, error) {
 	if providerCfg.Path == "" {
@@ -83,30 +86,20 @@ func (p *localFile) Get(_ context.Context, name string) (string, error) {
 		if !ok {
 			return fmt.Errorf("missing secret %s for env (expected from %s)", name, p.path)
 		}
-		value = val
+		value = val.Value
 		return nil
 	})
 	return value, err
 }
 
-func (p *localFile) List(_ context.Context, prefix string) (map[string]string, error) {
-	out := make(map[string]string)
-	err := p.withExclusiveLock(func() error {
-		entries, err := p.readAllUnlocked()
-		if err != nil {
-			return err
-		}
-		for name, val := range entries {
-			if prefix != "" && !strings.HasPrefix(name, ensurePrefixSlash(prefix)) {
-				continue
-			}
-			base := TrimPrefix(p.envCfg, name)
-			out[base] = val
-		}
-		return nil
-	})
+func (p *localFile) List(ctx context.Context, prefix string) (map[string]string, error) {
+	records, err := p.ListWithMetadata(ctx, prefix)
 	if err != nil {
 		return nil, err
+	}
+	out := make(map[string]string, len(records))
+	for k, rec := range records {
+		out[k] = rec.Value
 	}
 	return out, nil
 }
@@ -117,13 +110,18 @@ func (p *localFile) Set(_ context.Context, name, value string) error {
 		if err != nil {
 			return err
 		}
-		entries[name] = value
+		entry := entries[name]
+		if entry.CreatedAt.IsZero() {
+			entry.CreatedAt = time.Now().UTC()
+		}
+		entry.Value = value
+		entries[name] = entry
 		return p.writeAllUnlocked(entries)
 	})
 }
 
-func (p *localFile) readAllUnlocked() (map[string]string, error) {
-	entries := map[string]string{}
+func (p *localFile) readAllUnlocked() (map[string]SecretRecord, error) {
+	entries := map[string]SecretRecord{}
 	raw, err := os.ReadFile(p.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -144,7 +142,7 @@ func (p *localFile) readAllUnlocked() (map[string]string, error) {
 	return entries, nil
 }
 
-func (p *localFile) writeAllUnlocked(entries map[string]string) error {
+func (p *localFile) writeAllUnlocked(entries map[string]SecretRecord) error {
 	encoded, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode local store: %w", err)
@@ -197,6 +195,28 @@ func (p *localFile) writeAllUnlocked(entries map[string]string) error {
 
 	success = true
 	return nil
+}
+
+func (p *localFile) ListWithMetadata(_ context.Context, prefix string) (map[string]SecretRecord, error) {
+	out := make(map[string]SecretRecord)
+	err := p.withExclusiveLock(func() error {
+		entries, err := p.readAllUnlocked()
+		if err != nil {
+			return err
+		}
+		for name, val := range entries {
+			if prefix != "" && !strings.HasPrefix(name, ensurePrefixSlash(prefix)) {
+				continue
+			}
+			base := TrimPrefix(p.envCfg, name)
+			out[base] = val
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (p *localFile) withExclusiveLock(fn func() error) error {
