@@ -51,9 +51,6 @@ func (g GlobalConfig) GetProviders() map[string]provider.ProviderConfig {
 }
 
 func LoadProjectConfig(path string) (ProjectConfig, error) {
-	if path == "" {
-		path = DefaultProjectConfigPath()
-	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -78,7 +75,7 @@ func LoadGlobalConfig(path string) (GlobalConfig, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return GlobalConfig{}, fmt.Errorf("no global config found at %s. Run: envmap doctor", path)
+			return GlobalConfig{}, fmt.Errorf("no global config found at %s. Run: envmap init --global", path)
 		}
 		return GlobalConfig{}, fmt.Errorf("read global config: %w", err)
 	}
@@ -87,7 +84,7 @@ func LoadGlobalConfig(path string) (GlobalConfig, error) {
 		return GlobalConfig{}, fmt.Errorf("parse global config: %w", err)
 	}
 	if len(cfg.GetProviders()) == 0 {
-		return GlobalConfig{}, errors.New("no providers configured in global config; run envmap init or envmap doctor to add one")
+		return GlobalConfig{}, errors.New("no providers configured in global config; run envmap init --global to add one")
 	}
 	return cfg, nil
 }
@@ -120,6 +117,33 @@ func ResolveEnv(cfg ProjectConfig, requested string) (string, error) {
 
 func DefaultProjectConfigPath() string {
 	return ".envmap.yaml"
+}
+
+// FindProjectConfig walks up from startDir to locate a .envmap.yaml.
+func FindProjectConfig(startDir string) (string, error) {
+	if startDir == "" {
+		var err error
+		startDir, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("determine working directory: %w", err)
+		}
+	}
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve path: %w", err)
+	}
+	for {
+		candidate := filepath.Join(dir, DefaultProjectConfigPath())
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("no project config (.envmap.yaml) found starting from %s", startDir)
 }
 
 func DefaultGlobalConfigPath() string {

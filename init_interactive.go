@@ -16,6 +16,14 @@ import (
 func runInteractiveInit(ctx context.Context) error {
 	reader := bufio.NewReader(os.Stdin)
 
+	globalCfg, err := LoadGlobalConfig("")
+	if err != nil {
+		return fmt.Errorf("load global config first with `envmap init --global`: %w", err)
+	}
+	if len(globalCfg.GetProviders()) == 0 {
+		return fmt.Errorf("no providers configured; run `envmap init --global` first")
+	}
+
 	cwd, _ := os.Getwd()
 	projectDefault := filepath.Base(cwd)
 	project := prompt(reader, "Project name", projectDefault)
@@ -24,7 +32,12 @@ func runInteractiveInit(ctx context.Context) error {
 	}
 
 	envName := prompt(reader, "Environment name", "dev")
-	providerName := prompt(reader, "Provider name (as defined in ~/.envmap/config.yaml)", "local-store")
+	defaultProvider := firstProviderName(globalCfg.GetProviders())
+	providerName := prompt(reader, "Provider name (as defined in ~/.envmap/config.yaml)", defaultProvider)
+	if _, ok := globalCfg.GetProviders()[providerName]; !ok {
+		return fmt.Errorf("provider %q not found in ~/.envmap/config.yaml; available: %v", providerName, providerNames(globalCfg.GetProviders()))
+	}
+	providerCfg := globalCfg.GetProviders()[providerName]
 
 	pathPrefix := prompt(reader, "Path prefix (SSM) [example: /project/dev/]", fmt.Sprintf("/%s/%s/", project, envName))
 	prefix := prompt(reader, "Prefix (alternative to path prefix, leave blank to use path prefix)", "")
@@ -69,8 +82,7 @@ func runInteractiveInit(ctx context.Context) error {
 			fmt.Printf("No keys found in %s\n", envFile)
 			return nil
 		}
-		globalCfg, err := LoadGlobalConfig("")
-		if err != nil {
+		if err := resetLocalStoreIfNeeded(providerCfg); err != nil {
 			return err
 		}
 		for k, v := range entries {
@@ -105,6 +117,34 @@ func detectEnvFile() string {
 		}
 	}
 	return ""
+}
+
+func firstProviderName(providers map[string]provider.ProviderConfig) string {
+	for name := range providers {
+		return name
+	}
+	return ""
+}
+
+func providerNames(providers map[string]provider.ProviderConfig) []string {
+	out := make([]string, 0, len(providers))
+	for name := range providers {
+		out = append(out, name)
+	}
+	return out
+}
+
+func resetLocalStoreIfNeeded(providerCfg provider.ProviderConfig) error {
+	if providerCfg.Type != "local-file" && providerCfg.Type != "local-store" {
+		return nil
+	}
+	if providerCfg.Path == "" {
+		return errors.New("local-file provider missing path; cannot reset store")
+	}
+	if err := os.Remove(providerCfg.Path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reset local store: %w", err)
+	}
+	return nil
 }
 
 func runInteractiveGlobalSetup(ctx context.Context) error {

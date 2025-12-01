@@ -209,3 +209,73 @@ func TestResolveEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestFindProjectConfigWalkUp(t *testing.T) {
+	dir := t.TempDir()
+	rootCfg := filepath.Join(dir, ".envmap.yaml")
+	if err := os.WriteFile(rootCfg, []byte("project: x\ndefault_env: dev\nenvs:\n  dev:\n    provider: y\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(dir, "a", "b", "c")
+	if err := os.MkdirAll(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+	found, err := FindProjectConfig(nested)
+	if err != nil {
+		t.Fatalf("FindProjectConfig error: %v", err)
+	}
+	if found != rootCfg {
+		t.Fatalf("FindProjectConfig = %s, want %s", found, rootCfg)
+	}
+}
+
+func TestFindProjectConfigMissing(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := FindProjectConfig(dir); err == nil {
+		t.Fatal("expected error when no project config exists")
+	}
+}
+
+func TestLoadProjectConfigHelper(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".envmap.yaml")
+	if err := os.WriteFile(cfgPath, []byte("project: x\ndefault_env: dev\nenvs:\n  dev:\n    provider: y\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Use explicit flag path
+	prev := projectConfigPath
+	projectConfigPath = cfgPath
+	t.Cleanup(func() { projectConfigPath = prev })
+	cfg, path, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig error: %v", err)
+	}
+	if path != cfgPath {
+		t.Fatalf("loadProjectConfig path = %s, want %s", path, cfgPath)
+	}
+	if cfg.Project != "x" {
+		t.Fatalf("Project = %s, want x", cfg.Project)
+	}
+
+	// Use auto-discovery from nested directory
+	projectConfigPath = ""
+	wd, _ := os.Getwd()
+	t.Cleanup(func() { os.Chdir(wd) })
+	nested := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+	_, path2, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig auto-discover error: %v", err)
+	}
+	real1, _ := filepath.EvalSymlinks(path2)
+	real2, _ := filepath.EvalSymlinks(cfgPath)
+	if real1 != real2 {
+		t.Fatalf("auto-discovered path = %s, want %s", real1, real2)
+	}
+}

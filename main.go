@@ -15,6 +15,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// projectConfigPath can be set via --project flag to point to a specific .envmap.yaml.
+var projectConfigPath string
+
 func main() {
 	root := newRootCmd()
 	if err := root.Execute(); err != nil {
@@ -29,7 +32,6 @@ func newRootCmd() *cobra.Command {
 		Short: "envMap replaces .env files with secure secret injection",
 		Long:  "envMap fetches secrets from configured backends and injects them into processes without writing .env files.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Cobra executes child PersistentPreRunE; if root was invoked directly we still want cancellation contexts.
 			cmd.SetContext(context.Background())
 			return nil
 		},
@@ -37,19 +39,19 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	cmd.CompletionOptions.DisableDefaultCmd = true
+	cmd.PersistentFlags().StringVar(&projectConfigPath, "project", "", "path to .envmap.yaml (auto-detects by walking up from cwd if not set)")
 
 	cmd.AddCommand(
 		newInitCmd(),
 		newRunCmd(),
-		newEnvCmd(),
 		newExportCmd(),
 		newSetCmd(),
 		newGetCmd(),
+		newSyncCmd(),
 		newImportCmd(),
 		newKeygenCmd(),
 		newValidateCmd(),
 	)
-
 	return cmd
 }
 
@@ -72,22 +74,25 @@ func newInitCmd() *cobra.Command {
 func newRunCmd() *cobra.Command {
 	var envName string
 	c := &cobra.Command{
-		Use:   "run -- <command>",
-		Short: "Fetch secrets and run a command with injected environment",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if cmd.ArgsLenAtDash() == -1 {
-				return errors.New("use envmap run -- <command> to forward args to the target process")
-			}
-			return nil
-		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			dash := cmd.ArgsLenAtDash()
-			if dash == -1 || dash >= len(args) {
-				return errors.New("no command provided after --")
-			}
-			target := args[dash:]
+		Use:   "run [--env ENV] -- COMMAND [ARGS...]",
+		Short: "Run a command with secrets injected into the environment",
+		Long: `Run a command with secrets fetched from your configured provider and injected
+as environment variables. This allows running applications without .env files.
 
-			projectCfg, err := LoadProjectConfig("")
+The command and its arguments must come after a -- separator.
+
+Examples:
+  envmap run -- node server.js
+  envmap run --env prod -- ./my-app
+  envmap run --env dev -- npm start
+  envmap run -- docker compose up`,
+		Args:               cobra.MinimumNArgs(1),
+		DisableFlagParsing: false,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return errors.New("no command specified; usage: envmap run -- COMMAND [ARGS...]")
+			}
+			projectCfg, _, err := loadProjectConfig()
 			if err != nil {
 				return err
 			}
@@ -95,78 +100,19 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-
 			envToUse, err := ResolveEnv(projectCfg, envName)
 			if err != nil {
 				return err
 			}
-
 			secretEnv, err := CollectEnv(cmd.Context(), projectCfg, globalCfg, envToUse)
 			if err != nil {
 				return err
 			}
-
-			return SpawnWithEnv(cmd.Context(), target[0], target[1:], secretEnv)
+			fmt.Fprintf(os.Stderr, "envmap: injecting %d secrets from env %q\n", len(secretEnv), envToUse)
+			return SpawnWithEnv(cmd.Context(), args[0], args[1:], secretEnv)
 		},
 	}
 	c.Flags().StringVar(&envName, "env", "", "environment name to use (defaults to project default_env)")
-	return c
-}
-
-func newEnvCmd() *cobra.Command {
-	var envName string
-	var raw bool
-	c := &cobra.Command{
-		Use:   "env",
-		Short: "Debug: show secrets for an environment (masked by default)",
-		Long:  "Display secrets for human inspection. Values are masked by default. Use 'export' for machine-readable output.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			projectCfg, err := LoadProjectConfig("")
-			if err != nil {
-				return err
-			}
-			globalCfg, err := LoadGlobalConfig("")
-			if err != nil {
-				return err
-			}
-			envToUse, err := ResolveEnv(projectCfg, envName)
-			if err != nil {
-				return err
-			}
-			records, err := CollectEnvWithMetadata(cmd.Context(), projectCfg, globalCfg, envToUse)
-			if err != nil {
-				return err
-			}
-
-			// Sort keys for consistent output
-			keys := make([]string, 0, len(records))
-			for k := range records {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-
-			fmt.Fprintf(os.Stderr, "# env: %s (%d secrets)\n", envToUse, len(keys))
-			for _, k := range keys {
-				rec := records[k]
-				v := rec.Value
-				if raw {
-					fmt.Printf("%s=%s", k, v)
-				} else {
-					fmt.Printf("%s=%s", k, MaskValue(v))
-				}
-				if !rec.CreatedAt.IsZero() {
-					fmt.Printf("  # created %s", rec.CreatedAt.UTC().Format(time.RFC3339))
-					if age := humanizeAge(rec.CreatedAt); age != "" {
-						fmt.Printf(" (%s ago)", age)
-					}
-				}
-				fmt.Println()
-			}
-			return nil
-		},
-	}
-	c.Flags().StringVar(&envName, "env", "", "environment name (defaults to project default_env)")
-	c.Flags().BoolVar(&raw, "raw", false, "show unmasked values (use with care)")
 	return c
 }
 
@@ -186,7 +132,7 @@ Examples:
   eval $(envmap export --env dev)
   envmap export --env dev --format json | jq .`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projectCfg, err := LoadProjectConfig("")
+			projectCfg, _, err := loadProjectConfig()
 			if err != nil {
 				return err
 			}
@@ -205,82 +151,34 @@ Examples:
 
 			switch format {
 			case "plain", "":
-				// Sort keys for deterministic output
 				keys := make([]string, 0, len(secretEnv))
 				for k := range secretEnv {
 					keys = append(keys, k)
 				}
 				sort.Strings(keys)
-
 				for _, k := range keys {
-					// Shell-safe export format
-					fmt.Printf("export %s=%s\n", k, shellQuote(secretEnv[k]))
+					fmt.Printf("%s=%s\n", k, secretEnv[k])
 				}
 			case "json":
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				if err := enc.Encode(secretEnv); err != nil {
-					return fmt.Errorf("encode json: %w", err)
-				}
+				return enc.Encode(secretEnv)
 			default:
-				return fmt.Errorf("unknown format %q; use 'plain' or 'json'", format)
+				return fmt.Errorf("unknown format %q (use plain or json)", format)
 			}
 			return nil
 		},
 	}
-	c.Flags().StringVar(&envName, "env", "", "environment name (defaults to project default_env)")
-	c.Flags().StringVar(&format, "format", "plain", "output format: plain, json")
+	c.Flags().StringVar(&envName, "env", "", "environment name to use (defaults to project default_env)")
+	c.Flags().StringVar(&format, "format", "plain", "output format: plain or json")
 	return c
-}
-
-// shellQuote quotes a string for safe shell use.
-func shellQuote(s string) string {
-	// If the string is simple, no quoting needed
-	if isSimpleValue(s) {
-		return s
-	}
-	// Use single quotes, escaping any single quotes in the value
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
-}
-
-func isSimpleValue(s string) bool {
-	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == '/') {
-			return false
-		}
-	}
-	return len(s) > 0
-}
-
-func humanizeAge(created time.Time) string {
-	if created.IsZero() {
-		return ""
-	}
-	d := time.Since(created)
-	if d < 0 {
-		d = 0
-	}
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	case d < 30*24*time.Hour:
-		return fmt.Sprintf("%dd", int(d.Hours()/24))
-	case d < 365*24*time.Hour:
-		return fmt.Sprintf("%dmo", int(d.Hours()/(24*30)))
-	default:
-		return fmt.Sprintf("%dyr", int(d.Hours()/(24*365)))
-	}
 }
 
 func newSetCmd() *cobra.Command {
 	var envName string
 	var fromFile string
 	var promptSecret bool
+	var deleteKey bool
 	c := &cobra.Command{
 		Use:   "set --env ENV KEY [--file PATH|--prompt]",
 		Short: "Set a secret key/value in the configured backend without exposing value on the command line",
@@ -289,33 +187,40 @@ func newSetCmd() *cobra.Command {
 			if envName == "" {
 				return errors.New("provide --env to select which environment to target")
 			}
-			if fromFile != "" && promptSecret {
-				return errors.New("use only one of --file or --prompt")
-			}
-			var value string
-			if fromFile != "" {
-				valueBytes, err := os.ReadFile(fromFile)
-				if err != nil {
-					return fmt.Errorf("read secret file: %w", err)
-				}
-				value = strings.TrimSpace(string(valueBytes))
-			} else if promptSecret {
-				v, err := readSecretFromPrompt("Secret value: ")
-				if err != nil {
-					return err
-				}
-				value = v
-			} else {
-				return errors.New("provide --file or --prompt to supply the secret without shell history leakage")
-			}
 			key := args[0]
-			projectCfg, err := LoadProjectConfig("")
+			var value string
+			if deleteKey {
+				value = ""
+			} else {
+				if fromFile != "" && promptSecret {
+					return errors.New("use only one of --file or --prompt")
+				}
+				if fromFile != "" {
+					valueBytes, err := os.ReadFile(fromFile)
+					if err != nil {
+						return fmt.Errorf("read secret file: %w", err)
+					}
+					value = strings.TrimSpace(string(valueBytes))
+				} else if promptSecret {
+					v, err := readSecretFromPrompt("Secret value: ")
+					if err != nil {
+						return err
+					}
+					value = v
+				} else {
+					return errors.New("provide --file or --prompt to supply the secret without shell history leakage")
+				}
+			}
+			projectCfg, _, err := loadProjectConfig()
 			if err != nil {
 				return err
 			}
 			globalCfg, err := LoadGlobalConfig("")
 			if err != nil {
 				return err
+			}
+			if deleteKey {
+				return DeleteSecret(cmd.Context(), projectCfg, globalCfg, envName, key)
 			}
 			return WriteSecret(cmd.Context(), projectCfg, globalCfg, envName, key, value)
 		},
@@ -323,22 +228,24 @@ func newSetCmd() *cobra.Command {
 	c.Flags().StringVar(&envName, "env", "", "environment name to target")
 	c.Flags().StringVar(&fromFile, "file", "", "path to file containing the secret value")
 	c.Flags().BoolVar(&promptSecret, "prompt", false, "prompt for the secret (no echo)")
+	c.Flags().BoolVar(&deleteKey, "delete", false, "delete the specified key from the backend")
 	return c
 }
 
 func newGetCmd() *cobra.Command {
 	var envName string
 	var raw bool
+	var all bool
+	var globalAll bool
 	c := &cobra.Command{
 		Use:   "get --env ENV KEY",
 		Short: "Get a secret from the configured backend",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if envName == "" {
-				return errors.New("provide --env to select which environment to target")
+			if globalAll && !all {
+				return errors.New("use --global together with --all")
 			}
-			key := args[0]
-			projectCfg, err := LoadProjectConfig("")
+			projectCfg, _, err := loadProjectConfig()
 			if err != nil {
 				return err
 			}
@@ -346,7 +253,26 @@ func newGetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			value, err := FetchSecret(cmd.Context(), projectCfg, globalCfg, envName, key)
+			if globalAll {
+				for envNameIter := range projectCfg.Envs {
+					if err := printEnvSecrets(cmd.Context(), projectCfg, globalCfg, envNameIter, raw); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+			if envName == "" {
+				return errors.New("provide --env to select which environment to target")
+			}
+			envToUse := envName
+			if all {
+				return printEnvSecrets(cmd.Context(), projectCfg, globalCfg, envToUse, raw)
+			}
+			if len(args) != 1 {
+				return errors.New("provide KEY or use --all")
+			}
+			key := args[0]
+			value, err := FetchSecret(cmd.Context(), projectCfg, globalCfg, envToUse, key)
 			if err != nil {
 				return err
 			}
@@ -360,6 +286,8 @@ func newGetCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&envName, "env", "", "environment name to target")
 	c.Flags().BoolVar(&raw, "raw", false, "print raw secret value (use with care)")
+	c.Flags().BoolVar(&all, "all", false, "print all secrets for the environment (masked by default)")
+	c.Flags().BoolVar(&globalAll, "global", false, "with --all, list secrets for all environments")
 	return c
 }
 
@@ -382,7 +310,7 @@ func newImportCmd() *cobra.Command {
 			if len(entries) == 0 {
 				return fmt.Errorf("no entries found in %s", path)
 			}
-			projectCfg, err := LoadProjectConfig("")
+			projectCfg, _, err := loadProjectConfig()
 			if err != nil {
 				return err
 			}
@@ -409,7 +337,58 @@ func newImportCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&envName, "env", "", "environment name to import into")
-	c.Flags().BoolVar(&deleteAfter, "delete", false, "delete the .env file after successful import")
+	c.Flags().BoolVar(&deleteAfter, "delete", false, "delete the source .env file after successful import")
+	return c
+}
+
+func newSyncCmd() *cobra.Command {
+	var envName string
+	var outPath string
+	var merge bool
+	var keepLocal bool
+	var force bool
+	var backup bool
+	var checkOnly bool
+	c := &cobra.Command{
+		Use:   "sync",
+		Short: "Sync provider secrets to a .env-style file",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if envName == "" {
+				return errors.New("provide --env to select which environment to sync")
+			}
+			projectCfg, _, err := loadProjectConfig()
+			if err != nil {
+				return err
+			}
+			globalCfg, err := LoadGlobalConfig("")
+			if err != nil {
+				return err
+			}
+			envToUse, err := ResolveEnv(projectCfg, envName)
+			if err != nil {
+				return err
+			}
+			dest := outPath
+			if dest == "" {
+				dest = ".env"
+			}
+			records, err := CollectEnvWithMetadata(cmd.Context(), projectCfg, globalCfg, envToUse)
+			if err != nil {
+				return err
+			}
+			if checkOnly {
+				return checkEnvDrift(dest, records)
+			}
+			return syncEnvFile(dest, records, merge, keepLocal, force, backup)
+		},
+	}
+	c.Flags().StringVar(&envName, "env", "", "environment name to sync from")
+	c.Flags().StringVar(&outPath, "out", ".env", "path to output .env file")
+	c.Flags().BoolVar(&merge, "merge", false, "preserve keys that only exist in the existing file (provider still wins on conflicts)")
+	c.Flags().BoolVar(&keepLocal, "keep-local", false, "on conflicts, keep existing file values instead of provider values (use with care)")
+	c.Flags().BoolVar(&force, "force", false, "skip confirmation even if file is tracked or will be overwritten")
+	c.Flags().BoolVar(&backup, "backup", true, "write a .bak file before overwriting")
+	c.Flags().BoolVar(&checkOnly, "check", false, "only report drift; do not write")
 	return c
 }
 
@@ -417,11 +396,7 @@ func newKeygenCmd() *cobra.Command {
 	var output string
 	c := &cobra.Command{
 		Use:   "keygen",
-		Short: "Generate a secure encryption key for local storage",
-		Long: `Generate a cryptographically secure 256-bit key for local-file provider.
-
-The key is written to the specified file with restrictive permissions (0600).
-Store this file outside your repository and back it up securely.`,
+		Short: "Generate a local-store encryption key",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if output == "" {
 				home, err := os.UserHomeDir()
@@ -430,16 +405,12 @@ Store this file outside your repository and back it up securely.`,
 				}
 				output = filepath.Join(home, ".envmap", "key")
 			}
-
-			// Check if file exists
 			if _, err := os.Stat(output); err == nil {
 				return fmt.Errorf("key file %s already exists; remove it first if you want to regenerate", output)
 			}
-
 			if err := provider.GenerateKeyFile(output); err != nil {
 				return err
 			}
-
 			fmt.Printf("Generated encryption key: %s\n", output)
 			fmt.Println("Keep this file secure and backed up. Do not commit to version control.")
 			return nil
@@ -454,7 +425,7 @@ func newValidateCmd() *cobra.Command {
 		Use:   "validate",
 		Short: "Validate configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projectCfg, err := LoadProjectConfig("")
+			projectCfg, _, err := loadProjectConfig()
 			if err != nil {
 				return err
 			}
@@ -477,11 +448,55 @@ func newValidateCmd() *cobra.Command {
 				for _, m := range missing {
 					fmt.Printf("  %s\n", m)
 				}
-				return errors.New("configuration incomplete")
+				return fmt.Errorf("missing providers")
 			}
-			fmt.Printf("Providers: %d\n", len(providers))
-			fmt.Println("✓ Configuration valid")
+			fmt.Println("Configuration looks good.")
 			return nil
 		},
 	}
+}
+
+func printEnvSecrets(ctx context.Context, projectCfg ProjectConfig, globalCfg GlobalConfig, envName string, raw bool) error {
+	records, err := CollectEnvWithMetadata(ctx, projectCfg, globalCfg, envName)
+	if err != nil {
+		return err
+	}
+	keys := make([]string, 0, len(records))
+	for k := range records {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	fmt.Fprintf(os.Stderr, "# env: %s (%d secrets)\n", envName, len(keys))
+	for _, k := range keys {
+		rec := records[k]
+		val := rec.Value
+		if !raw {
+			val = MaskValue(val)
+		}
+		fmt.Printf("%s=%s", k, val)
+		if !rec.CreatedAt.IsZero() {
+			fmt.Printf("  # created %s", rec.CreatedAt.UTC().Format(time.RFC3339))
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
+func loadProjectConfig() (ProjectConfig, string, error) {
+	var path string
+	if projectConfigPath != "" {
+		path = projectConfigPath
+	} else {
+		found, err := FindProjectConfig("")
+		if err != nil {
+			return ProjectConfig{}, "", err
+		}
+		path = found
+	}
+	cfg, err := LoadProjectConfig(path)
+	if err != nil {
+		return ProjectConfig{}, "", err
+	}
+	return cfg, path, nil
 }
