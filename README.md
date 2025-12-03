@@ -24,16 +24,15 @@
 
 `envmap` is a local env manager that helps you:
 
-1.  Keep environment variables in sync with the (multiple) remote secret stores.
-2.  Makes the `.env` file an ephemeral artifact, to keep secrets providers the source of truth. I.e. "envmap --sync" to produce a newly updated `.env` file.
-3.  Comes with metadata on each key stored to inform when those keys were last changed/created.
-4.  Improve security than storing secrets in a plaintext `.env` file. If you have remote secret stores setup - the data is handled in memory and never touches disk. If you want to use it completely locally, the localstore is encrypted.
-5.  Runs completely local + opensource for security audits with your team.
-6.  Backups are possible and easy - env information is kept in a single encrypted localstore file instead of multiple `.env` files that are gitignored by design.
+1.  Keep local environment variables in sync with the remote secret stores, per project.
+2.  Makes the `.env` file an ephemeral artifact, to keep secrets providers the source of truth. i.e. "envmap --sync" to produce a newly updated `.env` file.
+3.  Comes with metadata on each key stored to inform when those keys were last changed/created for sake of doing routine rotations.
+4.  Potentially better security since you're not locked to storing secrets in a plaintext `.env` file.
+5.  Runs completely local + opensource for audits.
 
 ### Who is this for?
 
-- Engineers working in infra/devops with multiple `.env` variants like `.env.prod, .env.dev, .env.staging`, this is going to help you eliminate variants because you can just change to the desired `.env` with a single command.
+- Engineers working with multiple `.env` variants like `.env.prod, .env.dev, .env.staging`. This will help you consolidate and switch environments with a single command. Here's an example of that workflow: 
 
 ```
 (base) binsquare@mac.lan:~/Documents/envMap (main*) $ ./envmap sync --env prod
@@ -48,8 +47,8 @@ Wrote .env (1 secrets)
 testkey=test123
 ```
 
-- Engineers working a long list of env variables just wants a thin toll that helps you manage that increases dev velocity by making sure you have metadata
-- People who think, it's wild to store secrets in a plaintext file called ``.env`.` Well, you can run without a .env at all with the `envmap run --env dev -- npm start` to inject the variables into the process.
+- Engineers working a long list of env variables just wants a thin that helps you manage that increases dev velocity by making sure you have metadata
+- Engineers working across multiple projects and wants to consolidate and track ENV variables globally.
 
 ## Installation
 
@@ -215,20 +214,6 @@ envs:
 - Secrets never touch disk during normal operation. (unless you choose to use localstore to store all your env variables)
 - We only have`set --prompt` and `set --file` avoid saving secrets to shell history.
 - Values are masked by default in `env` and `get` output
-
-### Local provider hardening
-
-| Layer            | Implementation                      |
-| ---------------- | ----------------------------------- |
-| Encryption       | AES-256-GCM (authenticated)         |
-| Key derivation   | HKDF-SHA256 with purpose binding    |
-| Nonce            | Random 96-bit per write             |
-| File permissions | Key: 0600, Secrets: 0600, Dir: 0700 |
-| Locking          | Process-safe file locks (`flock`)   |
-| Atomic writes    | Write to temp + rename (crash-safe) |
-| Minimum key      | 16 bytes enforced                   |
-
-Generate keys with `envmap keygen` (256 bits from crypto/rand). Store the key file outside your repository.
 
 ## Contributions
 
