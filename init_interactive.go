@@ -72,25 +72,27 @@ func runInteractiveInit(ctx context.Context) error {
 	fmt.Printf("Wrote %s\n", cfgPath)
 
 	envFile := detectEnvFile()
-	useEnv := prompt(reader, fmt.Sprintf("Import secrets from detected .env file? (%s) (y/N)", envFile), "N")
-	if envFile != "" && strings.ToLower(useEnv) == "y" {
-		entries, err := parseDotEnv(envFile)
-		if err != nil {
-			return err
-		}
-		if len(entries) == 0 {
-			fmt.Printf("No keys found in %s\n", envFile)
-			return nil
-		}
-		if err := resetLocalStoreIfNeeded(providerCfg); err != nil {
-			return err
-		}
-		for k, v := range entries {
-			if err := WriteSecret(ctx, projectCfg, globalCfg, envName, k, v); err != nil {
+	if envFile != "" {
+		useEnv := prompt(reader, fmt.Sprintf("Import secrets from detected .env file? (%s) (y/N)", envFile), "N")
+		if strings.ToLower(useEnv) == "y" {
+			entries, err := parseDotEnv(envFile)
+			if err != nil {
 				return err
 			}
+			if len(entries) == 0 {
+				fmt.Printf("No keys found in %s\n", envFile)
+				return nil
+			}
+			if err := resetLocalStoreIfNeeded(providerCfg); err != nil {
+				return err
+			}
+			for k, v := range entries {
+				if err := WriteSecret(ctx, projectCfg, globalCfg, envName, k, v); err != nil {
+					return err
+				}
+			}
+			fmt.Printf("Imported %d keys from %s\n", len(entries), envFile)
 		}
-		fmt.Printf("Imported %d keys from %s\n", len(entries), envFile)
 	}
 	return nil
 }

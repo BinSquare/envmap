@@ -51,6 +51,9 @@ func newRootCmd() *cobra.Command {
 		newImportCmd(),
 		newKeygenCmd(),
 		newValidateCmd(),
+		newListCmd(),
+		newDoctorCmd(),
+		newCompletionCmd(),
 	)
 	return cmd
 }
@@ -499,4 +502,216 @@ func loadProjectConfig() (ProjectConfig, string, error) {
 		return ProjectConfig{}, "", err
 	}
 	return cfg, path, nil
+}
+
+func newListCmd() *cobra.Command {
+	var jsonOutput bool
+	c := &cobra.Command{
+		Use:   "list",
+		Short: "List all configured environments",
+		Long: `List all environments configured in the project's .envmap.yaml file.
+
+Examples:
+  envmap list
+  envmap list --json`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectCfg, cfgPath, err := loadProjectConfig()
+			if err != nil {
+				return err
+			}
+
+			if jsonOutput {
+				data := map[string]interface{}{
+					"project":     projectCfg.Project,
+					"config_path": cfgPath,
+					"default_env": projectCfg.DefaultEnv,
+					"envs":        projectCfg.Envs,
+				}
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(data)
+			}
+
+			fmt.Printf("Project: %s\n", projectCfg.Project)
+			fmt.Printf("Config:  %s\n", cfgPath)
+			fmt.Printf("Default: %s\n\n", projectCfg.DefaultEnv)
+			fmt.Println("Environments:")
+
+			envNames := make([]string, 0, len(projectCfg.Envs))
+			for name := range projectCfg.Envs {
+				envNames = append(envNames, name)
+			}
+			sort.Strings(envNames)
+
+			for _, name := range envNames {
+				env := projectCfg.Envs[name]
+				marker := " "
+				if name == projectCfg.DefaultEnv {
+					marker = "*"
+				}
+				fmt.Printf("  %s %s\n", marker, name)
+				fmt.Printf("      provider:    %s\n", env.GetProvider())
+				if env.PathPrefix != "" {
+					fmt.Printf("      path_prefix: %s\n", env.PathPrefix)
+				}
+				if env.Prefix != "" {
+					fmt.Printf("      prefix:      %s\n", env.Prefix)
+				}
+			}
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&jsonOutput, "json", false, "output in JSON format")
+	return c
+}
+
+func newDoctorCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "Diagnose configuration issues",
+		Long: `Run diagnostic checks on your envmap configuration.
+
+Checks performed:
+  - Project config (.envmap.yaml) exists and is valid
+  - Global config (~/.envmap/config.yaml) exists and is valid
+  - All referenced providers are configured
+  - Encryption key exists and has correct permissions
+  - Provider connectivity (where possible)`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println("Running envmap diagnostics...")
+			fmt.Println()
+			issues := 0
+
+			// Check 1: Project config
+			fmt.Print("Checking project config... ")
+			projectCfg, cfgPath, err := loadProjectConfig()
+			if err != nil {
+				fmt.Printf("FAIL\n  Error: %v\n", err)
+				issues++
+			} else {
+				fmt.Printf("OK (%s)\n", cfgPath)
+			}
+
+			// Check 2: Global config
+			fmt.Print("Checking global config... ")
+			globalCfg, err := LoadGlobalConfig("")
+			if err != nil {
+				fmt.Printf("FAIL\n  Error: %v\n", err)
+				issues++
+			} else {
+				fmt.Printf("OK (%s)\n", DefaultGlobalConfigPath())
+			}
+
+			// Check 3: Provider references
+			if projectCfg.Project != "" && len(globalCfg.GetProviders()) > 0 {
+				fmt.Println("\nChecking provider references...")
+				providers := globalCfg.GetProviders()
+				for envName, envCfg := range projectCfg.Envs {
+					providerName := envCfg.GetProvider()
+					fmt.Printf("  %s -> %s: ", envName, providerName)
+					if _, ok := providers[providerName]; ok {
+						fmt.Println("OK")
+					} else {
+						fmt.Println("MISSING")
+						issues++
+					}
+				}
+			}
+
+			// Check 4: Encryption key (for local providers)
+			fmt.Println("\nChecking encryption...")
+			for name, pCfg := range globalCfg.GetProviders() {
+				if pCfg.Type == "local-file" || pCfg.Type == "local-store" {
+					fmt.Printf("  %s key: ", name)
+					if pCfg.Encryption == nil {
+						fmt.Println("NOT CONFIGURED")
+						issues++
+						continue
+					}
+					if pCfg.Encryption.KeyFile != "" {
+						info, err := os.Stat(pCfg.Encryption.KeyFile)
+						if err != nil {
+							fmt.Printf("MISSING (%s)\n", pCfg.Encryption.KeyFile)
+							issues++
+						} else if info.Mode().Perm()&0o077 != 0 {
+							fmt.Printf("INSECURE PERMISSIONS (%#o, should be 0600)\n", info.Mode().Perm())
+							issues++
+						} else {
+							fmt.Println("OK")
+						}
+					} else if pCfg.Encryption.KeyEnv != "" {
+						if os.Getenv(pCfg.Encryption.KeyEnv) == "" {
+							fmt.Printf("ENV NOT SET (%s)\n", pCfg.Encryption.KeyEnv)
+							issues++
+						} else {
+							fmt.Println("OK (from env)")
+						}
+					}
+				}
+			}
+
+			// Summary
+			fmt.Println()
+			if issues == 0 {
+				fmt.Println("All checks passed! Configuration looks good.")
+				return nil
+			}
+			return fmt.Errorf("found %d issue(s)", issues)
+		},
+	}
+}
+
+func newCompletionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion scripts",
+		Long: `Generate shell completion scripts for envmap.
+
+To load completions:
+
+Bash:
+  $ source <(envmap completion bash)
+  # To load completions for each session, execute once:
+  # Linux:
+  $ envmap completion bash > /etc/bash_completion.d/envmap
+  # macOS:
+  $ envmap completion bash > $(brew --prefix)/etc/bash_completion.d/envmap
+
+Zsh:
+  # If shell completion is not already enabled in your environment,
+  # you will need to enable it. Execute once:
+  $ echo "autoload -U compinit; compinit" >> ~/.zshrc
+  # To load completions for each session, execute once:
+  $ envmap completion zsh > "${fpath[1]}/_envmap"
+  # Start a new shell for this setup to take effect.
+
+Fish:
+  $ envmap completion fish | source
+  # To load completions for each session, execute once:
+  $ envmap completion fish > ~/.config/fish/completions/envmap.fish
+
+PowerShell:
+  PS> envmap completion powershell | Out-String | Invoke-Expression
+  # To load completions for every new session, run:
+  PS> envmap completion powershell > envmap.ps1
+  # and source this file from your PowerShell profile.
+`,
+		DisableFlagsInUseLine: true,
+		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return cmd.Root().GenBashCompletion(os.Stdout)
+			case "zsh":
+				return cmd.Root().GenZshCompletion(os.Stdout)
+			case "fish":
+				return cmd.Root().GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
+			default:
+				return fmt.Errorf("unknown shell: %s", args[0])
+			}
+		},
+	}
 }

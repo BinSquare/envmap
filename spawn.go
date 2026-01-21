@@ -14,8 +14,25 @@ func SpawnWithEnv(ctx context.Context, command string, args []string, secretEnv 
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 
-	merged := os.Environ()
+	// Build environment with secrets taking precedence over existing vars
+	envMap := make(map[string]string)
+
+	// First, load existing environment
+	for _, e := range os.Environ() {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	// Then override with secrets (secrets take precedence)
 	for k, v := range secretEnv {
+		envMap[k] = v
+	}
+
+	// Convert back to slice
+	merged := make([]string, 0, len(envMap))
+	for k, v := range envMap {
 		merged = append(merged, fmt.Sprintf("%s=%s", k, v))
 	}
 	cmd.Env = merged
