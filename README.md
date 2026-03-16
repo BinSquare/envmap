@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=BinSquare&project=envmap&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 <p align="center">
   <img src="./logo.svg" alt="envmap logo" width="280">
 </p>
